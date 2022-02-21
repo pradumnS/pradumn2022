@@ -1,0 +1,39 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Diagnostics;
+using System.IO;
+using System.Security.Cryptography;
+using System.ServiceModel;
+using System.Xml;
+using System.Xml.Serialization;
+using System.Text.RegularExpressions;
+using NLog;
+using System.Net;
+using System.Xml.Linq;
+using System.Collections;
+using Org.BouncyCastle.Crypto;
+using System.Security.Cryptography.X509Certificates;
+using System.Configuration;
+
+namespace AuxiAddonNBFCHostEntityOTPRequestInterface 
+{
+    public enum GenericNBFCHCProtocolType 
+    {
+        Ssl3 = 48,
+        Tls = 192,
+        Tls11 = 768,
+        Tls12 = 3072,
+    }
+    public class Constant
+    {
+
+        public static string HCPrivateKey = null; 
+        public static string HCPublicKey = null;
+        public static string AUPrivateKey = null;
+        public static string AUPublicKey = null;
+
+    }
+} 
