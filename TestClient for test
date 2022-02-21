@@ -1,0 +1,111 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using GenericNBFCInerfaceService;
+using AuxiAddonNBFCHostEntityOTPRequestInterface;
+
+namespace TestClient
+{
+    public partial class Form1 : Form
+    {
+       public Form1()
+       {
+           InitializeComponent();
+       }
+       private void Form1_Load(object sender, EventArgs e)
+       {
+
+       }
+
+       private void button1_Click(object sender, EventArgs e)
+       {
+            //string TestClient = "1"; 
+            string BaseUrl = "https://api-ext-np.homecredit.co.in/revolving-transactions-integrator";
+
+            CAuxiAddonNBFCHostEntityOTPRequestHandler Obj = new CAuxiAddonNBFCHostEntityOTPRequestHandler();
+            string strThreadID = "23427";
+            string strEntityId = "11";
+            string strTxnUR = BaseUrl;
+            string strTimeout = "200000";
+            string strUserID = "pinelabs-np";
+            string strUserPassword = "pinelabs123";
+            string strTxnTypeId = "1";
+            string strSaleTxnType = "2";
+            string strMid = "3459846574";
+            string strTid = "68903458"; // "68903458";  //"68903458";
+            string strTxnAmount = "1349800";
+
+            string strOriginalTransactionID = "00292362009071000239"; //"1";
+            string strMobie = "6198206287"; // null; // 6198206287
+            string strOemId = "11112222";
+            string strProductId = "11112222";
+            string strImeiNo = "11112222";
+            string strProductSku = "NA";
+            string strCardExpiry = "";
+            //"20220104120433"; //"20180705174033";
+            string strMarginMoney = "349900";
+            string strLoanAmount = "999900";
+            string responseCode = "";
+            string responseDescription = "";
+            string outHostTransactionID = "";
+            string strOutSchemeCount = "";
+            string strOutSchemeRelevantData = "";
+            string strOutTerminalDisplay = "";
+            string strOutSchemeDetails = "";
+            string outRequestData = "";
+            string outResponseData = "";
+            string Otp = "123456";
+            string AccessCode = "1100";
+            string EmiAmount = "10000";
+            string AdvanceEMIAmount = "2000";
+            string ProcessingFee = "3000";
+            string Roi = "2";
+            string DownPaymentAmt = "1000";
+            string TenureMonths = "12";
+            string strAdditionalData = "";
+            string strOutEMIAmount = "";
+            string strAdvanceEMIAmount = "";
+            string strOutDownPayment = "";        
+            string outStrAdditionalData = ""; 
+            string outStrDPN = ""; string outStrLoanApplication = "";
+            string outStrAddressProof = "";  string outStrIDProof = "";
+            string outStrResidenceCity = ""; string outStrAddressLine3 = "";  string outStrAddressLine2 = "";
+            string outStrAddressLine1 = ""; string outStrMICRCode = ""; string outStrAccountNumber = "";
+            string outStrBankName = ""; string outStrECSMandate = ""; string outStrModeOfRepayment = "";
+            string outStrSecondaryTxnIdentifier = ""; string outStrFirstDueDate = "";
+            string outStrCustomerName = ""; string strOutProcessingFee = "";
+            string strOutLoanAmount = "";
+            string strtxnDateTime = "20220210173244";
+            string schemeId = "1111";
+            string strhostTransactionId = "1001174437";//null;
+            string strTransactionID = "00292362009071000305";
+            string strCardNumber = "4200004192";// "4200004223"; // "4200004237";// "4200004192";// "4200004239"; // Remaining card numbers for testing   "4105527606";
+
+            //string strPublicKey =  "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAi1eJ2G8C3ZShvX8uT6JaKk6SF1W3jN3+ok6QY8WMnS9VnC9HWVHfImihyMpM16e9ISBM9t26Pin7NN4MY7c/6BUi1tWG387rPXQUSa6JFdMCCkNLUJZPLeWKhwoM6GTlmvf0ZXHXPegzypf61gY2d84InrkczOWq9ZBF18YROjgoPecEiTv82RujMdMVVHsq1ov1mpKqN88hE0kHCuz1FQ0TcwIMGM6qisW1OB44KUdHoQrGmFUkUKaZfrhfyUxNbf1ghm/fNR1vvJ90ocj9X9hzpCJx4LEAwbRIaAG9tuRGU3/ObU/KH523wHhDyNwitASoGrtWQuSWP0zKOucMRQIDAQAB";
+            //string strPrivateKey = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCLV4nYbwLdlKG9fy5PoloqTpIXVbeM3f6iTpBjxYydL1WcL0dZUd8iaKHIykzXp70hIEz23bo+Kfs03gxjtz/oFSLW1Ybfzus9dBRJrokV0wIKQ0tQlk8t5YqHCgzoZOWa9/Rlcdc96DPKl/rWBjZ3zgieuRzM5ar1kEXXxhE6OCg95wSJO/zZG6Mx0xVUeyrWi/Wakqo3zyETSQcK7PUVDRNzAgwYzqqKxbU4HjgpR0ehCsaYVSRQppl+uF/JTE1t/WCGb981HW+8n3ShyP1f2HOkInHgsQDBtEhoAb225EZTf85tT8ofnbfAeEPI3CK0BKgau1ZC5JY/TMo65wxFAgMBAAECggEAfamJb/3VSL1FC99JhZm11Nec2px79vcxL3DIuKGsyQiqHTtqDfxOzfoshSckG4xzfQ9jOXMHBg7YNHpYFAlsAcIl9DcG9onmDjrEHRrhGCR+f4DmyBt19r8+qb//mgl8I8Cf0GjVI0hohLmBBkj+EBdoILRya7pn7iOZSRmf6a7r+Z2275VZaqvlnbdY9JkxAMwbJ+tGzIibn4bqDjpOxD8OxS6tiTdshLJ8oDQ8sRIM3K6qxr41Zs9JXNUhkaSWo47CBI3M94p7TVVFm++/9nJSkp4Ngzwrht7oNihgyLUSS6MEdjhKVGvMhGR7MTKwjAHFlJ9zF4SGShywLXhclQKBgQDJ3qjI5wSB7RAH2MTqr5vuzFtkDGgT5Ou+/iznkqAy6Sq+31yVdQLvgIzGxwYL+A29RyNnFFHy340fFWrbgqMXVY5P4qlpm2SlUdlt+8OeribkMTh44JwjYe+hFxKEgxOZs1x5qbkyUW3YSw45UGMHJ37wykuN0erMI9/xlVWJUwKBgQCwtKj6eqgXwQqoMTTX4AjFL4auiE3XhE7XN2zlp0tP0uZvvgyMU+TulnBre4rbKtmbwG0e/1P+w5sVDAGUsFIsrIlS7BFD3Zj8WbsymlZrfhwFs4cDGZYW4vO6I+XreGh8feEjTW/TCw5QNGiDgly6r8h18m+enx/WZ9X8ZuYpBwKBgQCxkEbKoFnYptsI6+UZwWnZfKuOr1ME3MF4eD6rWs/KuEm/Jt1bIVd5r4skdX+eG4yKRv6e9sK2bWjGRKJ/fsNSDRFmtyrpF6RJvlsQYPnKo8jVw2229WqhvM141sCVCm69LYVUBrQ9zF5geHSEeW8Bpf4EcwxOLKzo701WRFK+vQKBgCYzaDR+P8ii2wLxYFMrA7pdQ+iHXwywdbrhKJGdURK4rUiK9XuAx4Us0LDrzGEFKnYZa33ABRCWiPhL2Cuk0p8Fzco3bqQVS/WCEI4n/3bNlJFG9nEdHu1jsv0StanqJeyD6iAPpZUiVr3QFqgXjqRtTBDzkF3iWKepWwFt3WQRAoGACbM7Gbak+uVXTf1p/aC1GKuUPAb8BoCP5hLPP01HIpl8C3Ha/yQA2b9BT513+bG1vlKSUml2Vn0WoYPma556D2i7b+W+bb6CH6qjas7/f824nkk7RXim8rEpgm7Uzk58Syml10vdnF5ZV/b4q9g4xqo9wMfZssHnoJ5uMWa44DQ=";
+
+            Obj.ProcessInitiateTransactionNBFC2(strThreadID, strEntityId, strTxnUR, strTimeout, strUserID, strUserPassword, strTxnTypeId,
+                 strSaleTxnType, strMid, strTid, strTxnAmount, strTransactionID, strOriginalTransactionID, strMobie, strCardNumber, strCardExpiry, strtxnDateTime, strOemId, strProductId,
+                 strImeiNo, strProductSku, strMarginMoney, strLoanAmount, out responseCode, out responseDescription, out outHostTransactionID, out strOutSchemeCount,
+                 out strOutSchemeRelevantData, out strOutTerminalDisplay, out strOutSchemeDetails, out outRequestData, out outResponseData);
+
+            Obj.OTPTransaction(strThreadID, strEntityId, strTxnUR, strTimeout, strUserID, strUserPassword, strTxnTypeId, strTransactionID, strOriginalTransactionID,
+                schemeId, strhostTransactionId, out responseCode, out responseDescription, out outRequestData, out outResponseData, 
+                out outHostTransactionID);          
+
+            Obj.ProcessCreateLoan(strThreadID, strSaleTxnType, strTxnUR, "11", strTimeout, strUserID, strUserPassword, strMobie, strCardNumber, strCardExpiry,
+                strMid, strTid, strTransactionID, strhostTransactionId, strTxnAmount, Otp, AccessCode, strtxnDateTime, schemeId, EmiAmount,   AdvanceEMIAmount, ProcessingFee, 
+                strLoanAmount, Roi, DownPaymentAmt, TenureMonths, strAdditionalData, strMarginMoney, out responseCode, out responseDescription,
+                out outHostTransactionID, out strOutEMIAmount, out strAdvanceEMIAmount, out strOutDownPayment,   out strOutLoanAmount, out strOutProcessingFee, out outStrCustomerName,
+                out outStrSecondaryTxnIdentifier, out outStrFirstDueDate, out outStrModeOfRepayment, out outStrECSMandate, out outStrBankName,   out outStrAccountNumber, 
+                out outStrMICRCode, out outStrAddressLine1, out outStrAddressLine2, out outStrAddressLine3, out outStrResidenceCity, out outStrIDProof, out outStrAddressProof,
+                out outStrLoanApplication, out outStrDPN, out outRequestData, out outResponseData, out outStrAdditionalData);
+        }
+    }
+}
