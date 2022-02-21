@@ -1,0 +1,1428 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Net;
+using NLog;
+using System.Security.Cryptography;
+using System.Net.Cache;
+using System.Web.Script.Serialization;
+using Microsoft.IdentityModel.Tokens;
+using Org.BouncyCastle.Crypto;
+using Org.BouncyCastle.Crypto.Engines;
+using Org.BouncyCastle.Crypto.Modes;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Security;
+using Newtonsoft.Json.Linq;
+
+using System.Text.RegularExpressions;
+
+using System.Globalization;
+
+using Org.BouncyCastle.OpenSsl;
+using System.Security.Cryptography.X509Certificates;
+
+
+
+namespace AuxiAddonNBFCHostEntityOTPRequestInterface
+{
+    public interface IGenericNBFC2AUTransaction 
+    {
+        void ProcessInitiateTransactionNBFC2(string AuxThreadId, string EntityId, string TxnURL, string strTimeout, string UserID, string UserPassword, string TxnTypeId, string strSaleTxnType, string Mid, string Tid, string TxnAmount, string TransactionID, string OriginalTransactionID, string mobile, string CardNumber, string CardExpiry, string txnDateTime, string OemId, String ProductId, string ImeiNo, string ProductSku, string MarginMoney, string LoanAmount, out string responseCode, out string responseDescription, out string outHostTransactionID, out string strOutSchemeCount, out string strOutSchemeRelevantData, out string strOutTerminalDisplay, out string strOutSchemeDetails, out string outRequestData, out string outResponseData);
+
+        void ProcessCreateLoan(string AuxThreadId, string TxnTypeId, string TxnURL, string EntityID, string strTimeout, string UserID, string UserPassword, string mobile, string CardNumber, string CardExpiry, string Mid, string Tid, string TransactionID, string HostTransactionID, string TxnAmount, string Otp, string AccessCode, string txnDateTime, string SchemeId, string EmiAmount, string AdvanceEMIAmount, string ProcessingFee, string LoanAmount, string Roi, string DownPaymentAmt, string TenureMonths, string strAdditionalData, string MarginMoney, out string responseCode, out string responseDescription, out string outHostTransactionID, out string strOutEMIAmount, out string strAdvanceEMIAmount, out string strOutDownPayment, out string strOutLoanAmount, out string strOutProcessingFee, out string outStrCustomerName, out string outStrSecondaryTxnIdentifier, out string outStrFirstDueDate, out string outStrModeOfRepayment, out string outStrECSMandate, out string outStrBankName, out string outStrAccountNumber, out string outStrMICRCode, out string outStrAddressLine1, out string outStrAddressLine2, out string outStrAddressLine3, out string outStrResidenceCity, out string outStrIDProof, out string outStrAddressProof, out string outStrLoanApplication, out string outStrDPN, out string outRequestData, out string outResponseData, out string outStrAdditionalData);
+
+        void ProcessCancellationNBFCV2(string AuxThreadId, string TxnURL, string EntityID, string strTimeout, string UserID, string UserPassword, string mobile, string CardNumber, string CardExpiry, string Mid, string Tid, string TransactionID, string HostTransactionID, string OriginalTransactionID, string TxnAmount, string Otp, string CancellationTypeId, string ReversalTypeID, string txnDateTime, string strAdditionalData, out string responseCode, out string responseDescription, out string outHostTransactionID, out string outRequestData, out string outResponseData, out string outStrAdditionalData);
+
+    }
+
+    public class CGenericNBFC2AUTransactionHandler  : IGenericNBFC2AUTransaction 
+    {
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
+        public void ProcessInitiateTransactionNBFC2(string AuxThreadId, string EntityId, string TxnURL, string strTimeout, string UserID, string UserPassword, string TxnTypeId, string strSaleTxnType, string Mid, string Tid, string TxnAmount, string TransactionID, string OriginalTransactionID, string mobile, string CardNumber, string CardExpiry, string txnDateTime, string OemId, String ProductId, string ImeiNo, string ProductSku, string MarginMoney, string LoanAmount, out string responseCode, out string responseDescription, out string outHostTransactionID, out string strOutSchemeCount, out string strOutSchemeRelevantData, out string strOutTerminalDisplay, out string strOutSchemeDetails, out string outRequestData, out string outResponseData)
+        {
+            responseCode = string.Empty;
+            responseDescription = String.Empty;
+            outHostTransactionID = string.Empty;
+            strOutSchemeCount = "-1";
+            strOutSchemeRelevantData = string.Empty; // To hold the name of schemes to be displayed on terminal and other relevant information
+            strOutSchemeDetails = string.Empty;
+            outRequestData = string.Empty;
+            outResponseData = string.Empty;
+            strOutTerminalDisplay = string.Empty;
+            string strMaxConnxCount = "9999";
+            System.Net.ServicePointManager.ServerCertificateValidationCallback = new System.Net.Security.RemoteCertificateValidationCallback(AcceptAllCertifications);
+            System.Net.ServicePointManager.DefaultConnectionLimit = int.Parse(strMaxConnxCount);
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+
+
+            try
+            {
+                // No encryption for now
+                string strEncryptedPassword = UserPassword;
+
+
+                CAuxiNBFCV2HostOTPRequestFeilds obj = new CAuxiNBFCV2HostOTPRequestFeilds();
+                obj.transactionTypeId = TxnTypeId;
+                obj.saleTxnType = strSaleTxnType;
+                obj.mobile = mobile;
+                obj.cardExpiry = CardExpiry;
+                obj.cardNumber = CardNumber;
+                obj.transactionId = TransactionID;
+                obj.originalTransactionId = OriginalTransactionID;
+                obj.txnAmount = TxnAmount;
+                obj.loanAmount = LoanAmount;
+                obj.marginMoney = MarginMoney;
+                obj.mid = Mid;
+                obj.tid = Tid;
+                obj.dateTime = txnDateTime;
+                obj.productDetails.oemId = OemId;
+                obj.productDetails.productId = ProductId;
+                obj.productDetails.imeiNo = ImeiNo;
+                obj.productDetails.productSku = ProductSku;
+
+                string strSamplePayload = new JavaScriptSerializer().Serialize(obj);
+                if (strSamplePayload == null)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " JavaScript Serializer Object is NULL");
+                    responseCode = "101";
+                    responseDescription = "Unknown Error occured";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+                logger.Info("\nThreadID: " + AuxThreadId + " JSON Request OTP Generation:" + strSamplePayload);
+            
+                string TestEnv = "0";
+                TestEnv = System.Configuration.ConfigurationManager.AppSettings["TestClient"];
+                if (TestEnv == "1")
+                {
+                    string strAUPublicKeyPath = "";
+                    strAUPublicKeyPath = System.Configuration.ConfigurationManager.AppSettings["AUKeyFile"];
+                    Dictionary<string, string> strAUDictionary = LoadConfig(strAUPublicKeyPath);
+                    foreach (KeyValuePair<string, string> author in strAUDictionary)
+                    {
+                        if ("AUPrivateKeyPath" == author.Key)
+                        {
+                            Constant.AUPrivateKey = author.Value;
+                            logger.Info(" PrivateKey \n" + Constant.AUPrivateKey);
+                        }
+                        if ("AUPublicKeyPath" == author.Key)
+                        {
+                            Constant.AUPublicKey = author.Value;
+                            logger.Info(" PublicKey \n" + Constant.AUPrivateKey);
+                        }
+                    }
+                }
+                string strNBFCV2PublicKey = Constant.AUPublicKey;
+                string strPinePrivateKey = Constant.AUPrivateKey;             
+                logger.Info(" strPinePrivateKey \n" + strPinePrivateKey);
+                logger.Info(" strNBFCV2PublicKey \n" + strNBFCV2PublicKey);
+
+
+                string strIV = string.Empty, strEncryptedPayload = string.Empty, strEncryptedKey = string.Empty;
+                //For encryption
+                getEncryptedPayloadAndKey(strSamplePayload, strNBFCV2PublicKey, out strIV, out strEncryptedPayload, out strEncryptedKey);
+
+                CAuxiNBFCV2HostRequestParam objAuxiNBFCV2HostOTPRequestParam = new CAuxiNBFCV2HostRequestParam();
+                objAuxiNBFCV2HostOTPRequestParam.key = strEncryptedKey;
+                objAuxiNBFCV2HostOTPRequestParam.iv = strIV;
+                objAuxiNBFCV2HostOTPRequestParam.payload = strEncryptedPayload;
+
+                string jsonRequest = new JavaScriptSerializer().Serialize(objAuxiNBFCV2HostOTPRequestParam);
+                if (jsonRequest == null)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " JavaScript Serializer Object is NULL");
+                    responseCode = "101";
+                    responseDescription = "Unknown Error occured";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+                outRequestData = jsonRequest;
+                bool bRetVal = false;
+
+                bRetVal = NBFCV2HostHTTPPostData(AuxThreadId, TxnURL, strTimeout, UserID, UserPassword, jsonRequest, true, out responseCode, out responseDescription, out outResponseData);
+                if (!bRetVal)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " NBFCV2HostHTTPPostData() returned false");
+                    return;
+                }
+
+                logger.Info("\nThreadID: " + AuxThreadId + " Response for GenerateOTP TXN :" + outResponseData);
+
+                CAuxiNBFCV2HostResponseParam objAuxiNBFCV2HostOTPResponseParam = new CAuxiNBFCV2HostResponseParam();
+                objAuxiNBFCV2HostOTPResponseParam = new JavaScriptSerializer().Deserialize<CAuxiNBFCV2HostResponseParam>(outResponseData);
+
+                if (null == objAuxiNBFCV2HostOTPResponseParam)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " JavaScriptSerializer object is NULL");
+                    responseCode = "101";
+                    responseDescription = "Unknown Error Occured";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+                string strEncryptedKeyFromResponse = string.Empty, strEncryptedIVFromResponse = string.Empty, strEncryptedPayloadFromResponse = string.Empty;
+
+                if (!string.IsNullOrWhiteSpace(objAuxiNBFCV2HostOTPResponseParam.key))
+                {
+                    strEncryptedKeyFromResponse = objAuxiNBFCV2HostOTPResponseParam.key;
+
+                }
+                else
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " Invalid Response Received");
+                    responseCode = "101";
+                    responseDescription = "Invalid Response Received";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(objAuxiNBFCV2HostOTPResponseParam.iv))
+                {
+                    strEncryptedIVFromResponse = objAuxiNBFCV2HostOTPResponseParam.iv;
+                }
+                else
+                {
+
+                    logger.Info("\nThreadID: " + AuxThreadId + " Invalid Response Received");
+                    responseCode = "101";
+                    responseDescription = "Invalid Response Received";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+
+                if (!string.IsNullOrWhiteSpace(objAuxiNBFCV2HostOTPResponseParam.payload))
+                {
+                    strEncryptedPayloadFromResponse = objAuxiNBFCV2HostOTPResponseParam.payload;
+
+                }
+                else
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " Invalid Response Received");
+                    responseCode = "101";
+                    responseDescription = "Invalid Response Received";
+                    outHostTransactionID = null;
+                    return;
+
+                }
+
+                string strOutSamplePayloadResponse = string.Empty;
+                getDecryptedResponse(strEncryptedKeyFromResponse, strEncryptedIVFromResponse, strEncryptedPayloadFromResponse, strPinePrivateKey, out strOutSamplePayloadResponse);
+
+                logger.Info("\nThreadID: " + AuxThreadId + " SamplePayloadResponse :" + strOutSamplePayloadResponse);
+
+                NBFCV2OTPResponseFeilds objResponse = new NBFCV2OTPResponseFeilds();
+                objResponse = new JavaScriptSerializer().Deserialize<NBFCV2OTPResponseFeilds>(strOutSamplePayloadResponse);
+                if (null == objResponse)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " JavaScriptSerializer object is NULL");
+                    responseCode = "101";
+                    responseDescription = "Unknown Error Occured";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(objResponse.responseCode))
+                {
+
+                    responseCode = objResponse.responseCode;
+
+                }
+                else
+                {
+                    responseCode = "101";
+                    responseDescription = "Operation Status received is NULL";
+                    outHostTransactionID = objResponse.hostTransactionId;
+                    logger.Info("\nThreadID: " + AuxThreadId + " Operation Status  received is null");
+                    return;
+                }
+                if (objResponse.responseDescription != null)
+                {
+                    responseDescription = objResponse.responseDescription;
+                }
+                //fetch the scheme details
+                if (TxnTypeId.Equals("1"))
+                {
+                    if (!((objResponse.schemeDetails != null) && getSchemeDetails(AuxThreadId, objResponse.schemeDetails, out strOutSchemeCount, out strOutSchemeRelevantData, out strOutTerminalDisplay, out strOutSchemeDetails)))
+                    {
+                        logger.Info("\nThreadID: " + AuxThreadId + " " + "Error Parsing schemes! ...");
+
+                        strOutSchemeRelevantData = "";
+                        strOutSchemeDetails = "";
+                    }
+                }
+                if (!string.IsNullOrWhiteSpace(objResponse.hostTransactionId))
+                {
+                    outHostTransactionID = objResponse.hostTransactionId;
+                }
+
+                else
+                {
+                    responseCode = "101";
+                    responseDescription = "Response HostTransactionID received is NULL";
+                    outHostTransactionID = null;
+                    logger.Info("\nThreadID: " + AuxThreadId + " Response HostTransactionID  received is null");
+                    return;
+
+                }
+
+            }
+            catch (Exception str)
+            {
+                string strLog = (string)"EXCEPTION: " + str.Data.ToString();
+                responseDescription = strLog;
+                responseCode = "101";
+                outHostTransactionID = null;
+                logger.Info("\nThreadID: " + AuxThreadId + " Exception Response:" + responseDescription);
+                return;
+            }
+
+
+        }
+        public void getDecryptedResponse(string strEncryptedKeyFromResponse, string strIVFromResponse, string strEncryptedPayloadFromResponse, string strPinePrivateKey, out string strOutSamplePayloadResponse)
+        {
+            strOutSamplePayloadResponse = string.Empty;
+            string strDecryptedSessionKeyFromResponse = string.Empty;
+            getDecryptedSessionKey(strEncryptedKeyFromResponse, strPinePrivateKey, out strDecryptedSessionKeyFromResponse);
+            getDecryptedPayLoadFromResponse(strDecryptedSessionKeyFromResponse, strIVFromResponse, strEncryptedPayloadFromResponse, out strOutSamplePayloadResponse);
+        }
+        public void getDecryptedSessionKey(string stringSessionKey, string strPinePrivateKey, out string strDecryptedSessionKeyFromResponse)
+        {
+            strDecryptedSessionKeyFromResponse = string.Empty;
+
+
+            try
+
+            {
+                byte[] rsaPrivateKey = Convert.FromBase64String(strPinePrivateKey);
+                RsaPrivateCrtKeyParameters rsaPvtKeyParameters = (RsaPrivateCrtKeyParameters)PrivateKeyFactory.CreateKey(Convert.FromBase64String(strPinePrivateKey));
+                RSAParameters rsaParameters = DotNetUtilities.ToRSAParameters(rsaPvtKeyParameters);
+
+
+
+                using (RSACryptoServiceProvider RSAHandle = new RSACryptoServiceProvider(2048))
+
+                {
+
+                    RSAHandle.ImportParameters(rsaParameters);
+
+
+                    //byte[] bData = Encoding.UTF8.GetBytes(Base64UrlEncoder.Decode(stringSessionKey));
+
+                    byte[] bData = Base64UrlEncoder.DecodeBytes(stringSessionKey);
+
+
+                    byte[] bEncryptedData = RSAHandle.Decrypt(bData, true);
+
+                    //strDecryptedSessionKeyFromResponse = Encoding.UTF8.GetString(bEncryptedData);
+                    //byte[] byteB = Encoding.UTF8.GetBytes(strDecryptedSessionKeyFromResponse);
+
+                    strDecryptedSessionKeyFromResponse = Base64UrlEncoder.Encode(bEncryptedData);
+
+                }
+
+            }
+
+            catch (Exception e)
+
+            {
+
+            }
+
+
+        }
+
+        //Decrypt the string that has been encrypted with a key using AES/GCM/NOPADDING Algorithm
+        private void getDecryptedPayLoadFromResponse(string strRandomKey, string strIV, string strEncrypted, out string strOutDecryptedPayLoad)
+        {
+            strOutDecryptedPayLoad = "";
+
+            byte[] encryptedBytes = Base64UrlEncoder.DecodeBytes(strEncrypted);
+
+
+            byte[] bRandomKey = Base64UrlEncoder.DecodeBytes(strRandomKey);
+
+            byte[] bIV = Base64UrlEncoder.DecodeBytes(strIV);
+
+
+
+            GcmBlockCipher cipher = new GcmBlockCipher(new AesEngine());          //AES/GCM/NOPADDING is essentially same as AES/GCM/  
+            AeadParameters parameters = new AeadParameters(new KeyParameter(bRandomKey), 128, bIV, null);
+            //ParametersWithIV parameters = new ParametersWithIV(new KeyParameter(key), iv);
+            cipher.Init(false, parameters);
+            byte[] plainBytes = new byte[cipher.GetOutputSize(encryptedBytes.Length)];
+            Int32 retLen = cipher.ProcessBytes
+                            (encryptedBytes, 0, encryptedBytes.Length, plainBytes, 0);
+            try
+            {
+                cipher.DoFinal(plainBytes, retLen);
+            }
+            catch (Exception e)
+            {
+
+            }
+
+            strOutDecryptedPayLoad = Encoding.UTF8.GetString(plainBytes);
+
+        }
+
+        //Encrypt the payload using a random generated key by AES/GCM/NOPADDING Algorithm
+        private void getEncryptedPayloadAndKey(string strPayload, string strNBFCV2PublicKey, out string strIV, out string strEncryptedPayload, out string strEncryptedKey)
+        {
+            strIV = string.Empty;
+            strEncryptedPayload = "";
+            strEncryptedKey = "";
+
+            byte[] bIV = new byte[16];
+            byte[] bRandomKey = new byte[16];
+
+            using (RNGCryptoServiceProvider RandomNumberGen = new RNGCryptoServiceProvider())
+            {
+
+                RandomNumberGen.GetBytes(bRandomKey);
+                RandomNumberGen.GetBytes(bIV);
+            }
+
+            byte[] bPayload = Encoding.UTF8.GetBytes(strPayload);
+
+            GcmBlockCipher cipher = new GcmBlockCipher(new AesEngine());              //AES/GCM/NOPADDING is essentially same as AES/GCM/
+            AeadParameters parameters = new AeadParameters(new KeyParameter(bRandomKey), 128, bIV, null);
+            cipher.Init(true, parameters);
+            byte[] encryptedBytes = new byte[cipher.GetOutputSize(bPayload.Length)];
+            Int32 iRet = cipher.ProcessBytes(bPayload, 0, bPayload.Length, encryptedBytes, 0);
+            cipher.DoFinal(encryptedBytes, iRet);
+            strEncryptedPayload = getBase64URLEncode(encryptedBytes); // encrypted payload in base64
+            strIV = getBase64URLEncode(bIV);   // encrypted IV in base64
+                                               //strEncryptedKey = getEncryptedSessionKey(bRandomKey, strNBFCV2PublicKey);  // encrypted Random Key in base64
+            getEncryptedSessionKey(bRandomKey, strNBFCV2PublicKey, out strEncryptedKey);
+        }
+        private string getBase64URLEncode(byte[] bRaw)
+        {
+            string strBase64URL = Base64UrlEncoder.Encode(bRaw);
+            //string strBase64URL2 = Convert.ToBase64String(bRaw).Replace('+', '-').Replace('/', '_').Replace("=", "");
+            return strBase64URL;
+        }
+
+        //RSA/ECB/OAEPWithSHA-1AndMGF1PADDING algorithm
+        //it is same as RSA/NONE/OAEPWithSHA-1AndMGF1PADDING as RSA is not a block cipher
+        private void getEncryptedSessionKey(byte[] bData, string strNBFCV2PublicKey, out string strEncryptedKey)
+        {
+            strEncryptedKey = string.Empty;
+
+            byte[] rsaPublicKey = Convert.FromBase64String(strNBFCV2PublicKey);
+            AsymmetricKeyParameter asymmetricKeyParameter = PublicKeyFactory.CreateKey(rsaPublicKey);
+            RsaKeyParameters rsaKeyParameters = (RsaKeyParameters)asymmetricKeyParameter;
+            RSAParameters rsaParameters = DotNetUtilities.ToRSAParameters(rsaKeyParameters);
+            //rsaParameters.Modulus = rsaKeyParameters.Modulus.ToByteArrayUnsigned();
+            //rsaParameters.Exponent = rsaKeyParameters.Exponent.ToByteArrayUnsigned();
+            using (RSACryptoServiceProvider RSAHandle = new RSACryptoServiceProvider(2048))
+            {
+                RSAHandle.ImportParameters(rsaParameters);
+                byte[] bEncryptedData = RSAHandle.Encrypt(bData, true);
+                //strEncryptedData = Convert.ToBase64String(bEncryptedData);
+                strEncryptedKey = getBase64URLEncode(bEncryptedData);
+            }
+
+
+        }
+        // Used to get the schemes from NBFCV2 InitiateSale response.
+        private bool getSchemeDetails(string AuxThreadId, NBFCV2ResponseParamsSchemeDetails objSchemeDetails, out string strOutSchemeCount, out string strOutSchemeRelevantData, out string strOutTerminalDisplay, out string strOutSchemeDetails)
+        {
+            strOutSchemeRelevantData = "";
+            strOutSchemeDetails = "";
+            strOutSchemeCount = "0";
+            strOutTerminalDisplay = string.Empty;
+            strOutTerminalDisplay += "|";
+            string strDisplayString = string.Empty;
+
+
+            if (objSchemeDetails.applicableSchemes == null)
+            {
+                logger.Info("\nThreadID: " + AuxThreadId + " " + "Scheme received as null");
+                return false;
+            }
+
+
+            if (!((objSchemeDetails.nCount > 0) && (objSchemeDetails.nCount == objSchemeDetails.applicableSchemes.Length)))
+            {
+                logger.Info("\nThreadID: " + AuxThreadId + " " + "Schemes Not Received with invalid scheme count");
+                return false;
+            }
+
+            strOutSchemeCount = objSchemeDetails.nCount.ToString();
+            int iCtr = objSchemeDetails.nCount;
+
+            string jsonSchemeDetails = new JavaScriptSerializer().Serialize(objSchemeDetails.applicableSchemes);
+            if (jsonSchemeDetails == null)
+            {
+                logger.Info("\nThreadID: " + AuxThreadId + " " + " JavaScript Serializer Object is NULL/unable to serailaize scheme array");
+                return false;
+            }
+
+            strOutSchemeDetails = jsonSchemeDetails;
+
+            for (int i = 0; i < iCtr; i++)
+            {
+                strDisplayString = string.Empty;
+
+                if ((null != objSchemeDetails.applicableSchemes[i]))
+                {
+                    if (i != 0)
+                    {
+                        strOutSchemeRelevantData += "|";
+
+                    }
+
+                    string strfinancierCrossSellCharges = "|";
+
+                    Dictionary<string, NBFCSpecialCharges> dictionaryForNBFCSpecialCharges = objSchemeDetails.applicableSchemes[i].financierCrossSellCharges;
+                    if ((dictionaryForNBFCSpecialCharges != null) && (dictionaryForNBFCSpecialCharges.Count > 0))
+                    {
+
+                        foreach (KeyValuePair<string, NBFCSpecialCharges> entry in dictionaryForNBFCSpecialCharges)
+                        {
+
+                            //added null check
+
+                            if ((entry.Value) != null)
+                            {
+                                strfinancierCrossSellCharges += entry.Key + "|" + (string.IsNullOrEmpty(entry.Value.name) ? " " : entry.Value.name) + "|" + (string.IsNullOrEmpty(entry.Value.valueType) ? " " : entry.Value.valueType) + "|" + (string.IsNullOrEmpty(entry.Value.value) ? " " : entry.Value.value) + "|";
+                            }
+
+                        }
+                        strfinancierCrossSellCharges = "FINANCIER_CROSS_SELL_CHARGES_STARTS" + strfinancierCrossSellCharges + "FINANCIER_CROSS_SELL_CHARGES_ENDS";
+                    }
+
+                    else
+                    {
+                        strfinancierCrossSellCharges = " ";
+                    }
+
+
+                    dictionaryForNBFCSpecialCharges = objSchemeDetails.applicableSchemes[i].financierAdditionalCharges;
+                    string strfinancierAdditionalCharges = "|";
+                    if ((dictionaryForNBFCSpecialCharges != null) && (dictionaryForNBFCSpecialCharges.Count > 0))
+                    {
+
+                        foreach (KeyValuePair<string, NBFCSpecialCharges> entry in dictionaryForNBFCSpecialCharges)
+                        {
+
+                            //added null check
+
+                            if ((entry.Value) != null)
+                            {
+                                strfinancierAdditionalCharges += entry.Key + "|" + (string.IsNullOrEmpty(entry.Value.name) ? " " : entry.Value.name) + "|" + (string.IsNullOrEmpty(entry.Value.valueType) ? " " : entry.Value.valueType) + "|" + (string.IsNullOrEmpty(entry.Value.value) ? " " : entry.Value.value) + "|";
+                            }
+
+                        }
+                        strfinancierAdditionalCharges = "FINANCIER_ADDITIONAL_CHARGES_STARTS" + strfinancierAdditionalCharges + "FINANCIER_ADDITIONAL_CHARGES_ENDS";
+                    }
+
+                    else
+                    {
+                        strfinancierAdditionalCharges = " ";
+                    }
+
+
+                    strOutSchemeRelevantData += "SCHEME_" + (i + 1) + "_BEGIN" + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].schemeId) ? " " : objSchemeDetails.applicableSchemes[i].schemeId)
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].schemeDesc) ? " " : objSchemeDetails.applicableSchemes[i].schemeDesc)
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].terminalDesc) ? " " : objSchemeDetails.applicableSchemes[i].terminalDesc)
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].schemeType) ? " " : objSchemeDetails.applicableSchemes[i].schemeType)
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].schemeFlag) ? " " : objSchemeDetails.applicableSchemes[i].schemeFlag)
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].schemeStartDate) ? " " : objSchemeDetails.applicableSchemes[i].schemeStartDate)
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].schemeEndDate) ? " " : objSchemeDetails.applicableSchemes[i].schemeEndDate)
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].minAmount) ? " " : objSchemeDetails.applicableSchemes[i].minAmount)
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].maxAmount) ? " " : objSchemeDetails.applicableSchemes[i].maxAmount)
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].roi) ? " " : objSchemeDetails.applicableSchemes[i].roi)
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].tenure) ? " " : objSchemeDetails.applicableSchemes[i].tenure)
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].schemeDownPayment.valueType) ? " " : objSchemeDetails.applicableSchemes[i].schemeDownPayment.valueType)
+                                             + "|" + ("0".Equals(objSchemeDetails.applicableSchemes[i].schemeDownPayment.valueType) ? "0" : (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].schemeDownPayment.value) ? " " : objSchemeDetails.applicableSchemes[i].schemeDownPayment.value))
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].customerProcessingFee.valueType) ? " " : objSchemeDetails.applicableSchemes[i].customerProcessingFee.valueType)
+                                             + "|" + ("0".Equals(objSchemeDetails.applicableSchemes[i].customerProcessingFee.valueType) ? "0" : (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].customerProcessingFee.value) ? " " : objSchemeDetails.applicableSchemes[i].customerProcessingFee.value))
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].oemProcessingFee.valueType) ? " " : objSchemeDetails.applicableSchemes[i].oemProcessingFee.valueType)
+                                             + "|" + ("0".Equals(objSchemeDetails.applicableSchemes[i].oemProcessingFee.valueType) ? "0" : (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].oemProcessingFee.value) ? " " : objSchemeDetails.applicableSchemes[i].oemProcessingFee.value))
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].mdr.valueType) ? " " : objSchemeDetails.applicableSchemes[i].mdr.valueType)
+                                             + "|" + ("0".Equals(objSchemeDetails.applicableSchemes[i].mdr.valueType) ? "0" : (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].mdr.value) ? " " : objSchemeDetails.applicableSchemes[i].mdr.value))
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].mbd.valueType) ? " " : objSchemeDetails.applicableSchemes[i].mbd.valueType)
+                                             + "|" + ("0".Equals(objSchemeDetails.applicableSchemes[i].mbd.valueType) ? "0" : (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].mbd.value) ? " " : objSchemeDetails.applicableSchemes[i].mbd.value))
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].dbd.valueType) ? " " : objSchemeDetails.applicableSchemes[i].dbd.valueType)
+                                             + "|" + ("0".Equals(objSchemeDetails.applicableSchemes[i].dbd.valueType) ? "0" : (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].dbd.value) ? " " : objSchemeDetails.applicableSchemes[i].dbd.value))
+                                             + "|" + (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].cashBack.type) ? " " : objSchemeDetails.applicableSchemes[i].cashBack.type)
+                                             + "|" + ("0".Equals(objSchemeDetails.applicableSchemes[i].cashBack.type) ? "0" : (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].cashBack.valueType) ? " " : objSchemeDetails.applicableSchemes[i].cashBack.valueType))
+                                             + "|" + ("0".Equals(objSchemeDetails.applicableSchemes[i].cashBack.type) ? "0" : (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].cashBack.oemShare) ? " " : objSchemeDetails.applicableSchemes[i].cashBack.oemShare))
+                                             + "|" + ("0".Equals(objSchemeDetails.applicableSchemes[i].cashBack.type) ? "0" : (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].cashBack.merchantShare) ? " " : objSchemeDetails.applicableSchemes[i].cashBack.merchantShare))
+                                             + "|" + ("0".Equals(objSchemeDetails.applicableSchemes[i].cashBack.type) ? "0" : (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].cashBack.financierShare) ? " " : objSchemeDetails.applicableSchemes[i].cashBack.financierShare))
+                                             + "|" + ("0".Equals(objSchemeDetails.applicableSchemes[i].cashBack.type) ? "0" : (string.IsNullOrWhiteSpace(objSchemeDetails.applicableSchemes[i].cashBack.thresholdAmount) ? " " : objSchemeDetails.applicableSchemes[i].cashBack.thresholdAmount))
+                                             + "|" + strfinancierCrossSellCharges
+                                             + "|" + strfinancierAdditionalCharges
+                                             + "|" + "SCHEME_" + (i + 1) + "_END";
+
+
+                    strOutTerminalDisplay += objSchemeDetails.applicableSchemes[i].terminalDesc + "|";
+
+
+
+                }
+
+                else
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " " + " Invalid Scheme Received!");
+                    return false;
+                }
+            }
+
+            logger.Info("\nThreadID: " + AuxThreadId + " " + " Successfully fetched " + iCtr + " Schemes");
+            return true;
+        }
+        public void ProcessCreateLoan(string AuxThreadId, string TxnTypeId, string TxnURL, string EntityID, string strTimeout, string UserID, string UserPassword, string mobile, string CardNumber, string CardExpiry, string Mid, string Tid, string TransactionID, string HostTransactionID, string TxnAmount, string Otp, string AccessCode, string txnDateTime, string SchemeId, string EmiAmount, string AdvanceEMIAmount, string ProcessingFee, string LoanAmount, string Roi, string DownPaymentAmt, string TenureMonths, string strAdditionalData, string MarginMoney, out string responseCode, out string responseDescription, out string outHostTransactionID, out string strOutEMIAmount, out string strAdvanceEMIAmount, out string strOutDownPayment, out string strOutLoanAmount, out string strOutProcessingFee, out string outStrCustomerName, out string outStrSecondaryTxnIdentifier, out string outStrFirstDueDate, out string outStrModeOfRepayment, out string outStrECSMandate, out string outStrBankName, out string outStrAccountNumber, out string outStrMICRCode, out string outStrAddressLine1, out string outStrAddressLine2, out string outStrAddressLine3, out string outStrResidenceCity, out string outStrIDProof, out string outStrAddressProof, out string outStrLoanApplication, out string outStrDPN, out string outRequestData, out string outResponseData, out string outStrAdditionalData)
+        {
+            responseCode = "";
+            responseDescription = "";
+            strOutEMIAmount = "";
+            strAdvanceEMIAmount = "";
+            strOutDownPayment = "";
+            strOutLoanAmount = "";
+            strOutProcessingFee = "";
+            string strOutMarginMoney = "";
+            //added new 
+            outStrCustomerName = "";
+            outStrSecondaryTxnIdentifier = "";
+            outStrFirstDueDate = "";
+            outStrModeOfRepayment = "";
+            outStrECSMandate = "";
+            outStrBankName = "";
+            outStrAccountNumber = "";
+            outStrMICRCode = "";
+            outStrAddressLine1 = "";
+            outStrAddressLine2 = "";
+            outStrAddressLine3 = "";
+            outStrResidenceCity = "";
+            outStrIDProof = "";
+            outStrAddressProof = "";
+            outStrLoanApplication = "";
+            outStrDPN = "";
+
+            outRequestData = "";
+            outResponseData = "";
+            outHostTransactionID = "";
+            outStrAdditionalData = "";
+
+            string strMaxConnxCount = "9999";
+            System.Net.ServicePointManager.ServerCertificateValidationCallback = new System.Net.Security.RemoteCertificateValidationCallback(AcceptAllCertifications);
+            System.Net.ServicePointManager.DefaultConnectionLimit = int.Parse(strMaxConnxCount);
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+
+            try
+            {
+
+                NBFCV2CreateLoanRequestFeilds obj = new NBFCV2CreateLoanRequestFeilds();
+                obj.otp = Otp;
+                obj.mobile = mobile;
+                obj.mid = Mid;
+                obj.tid = Tid;
+                obj.transactionId = TransactionID;
+                obj.cardNumber = CardNumber;
+                obj.cardExpiry = CardExpiry;
+                obj.txnAmount = TxnAmount;
+                obj.dateTime = txnDateTime;
+                obj.txnType = TxnTypeId;
+                obj.schemeId = SchemeId;
+                obj.roi = Roi;
+                obj.tenure = TenureMonths;
+                obj.calculationDetails.advanceEmiAmount = AdvanceEMIAmount;
+                obj.calculationDetails.downPaymentAmount = DownPaymentAmt;
+                obj.calculationDetails.emiAmount = EmiAmount;
+                obj.calculationDetails.processingFee = ProcessingFee;
+                obj.calculationDetails.loanAmount = LoanAmount;
+                obj.calculationDetails.marginMoney = MarginMoney;
+
+                string strSamplePayload = new JavaScriptSerializer().Serialize(obj);
+                if (strSamplePayload == null)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " JavaScript Serializer Object is NULL");
+                    responseCode = "101";
+                    responseDescription = "Unknown Error occured";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+                logger.Info("\nThreadID: " + AuxThreadId + " JSON Request CreateLoan Generation:" + strSamplePayload);
+                string TestEnv = "0";
+                TestEnv = System.Configuration.ConfigurationManager.AppSettings["TestClient"];
+                if (TestEnv == "1")
+                {
+                    string strAUPublicKeyPath = "";
+                    strAUPublicKeyPath = System.Configuration.ConfigurationManager.AppSettings["AUKeyFile"];
+                    Dictionary<string, string> strAUDictionary = LoadConfig(strAUPublicKeyPath);
+                    foreach (KeyValuePair<string, string> author in strAUDictionary)
+                    {
+                        if ("AUPrivateKeyPath" == author.Key)
+                        {
+                            Constant.AUPrivateKey = author.Value;
+                            logger.Info(" PrivateKey \n" + Constant.AUPrivateKey);
+                        }
+                        if ("AUPublicKeyPath" == author.Key)
+                        {
+                            Constant.AUPublicKey = author.Value;
+                            logger.Info(" PublicKey \n" + Constant.AUPrivateKey);
+                        }
+                    }
+                }
+                string strNBFCV2PublicKey = Constant.AUPublicKey;
+                string strPinePrivateKey = Constant.AUPrivateKey;
+                string strIV = string.Empty, strEncryptedPayload = string.Empty, strEncryptedKey = string.Empty;
+                //For encryption
+                getEncryptedPayloadAndKey(strSamplePayload, strNBFCV2PublicKey, out strIV, out strEncryptedPayload, out strEncryptedKey);
+
+                CAuxiNBFCV2HostRequestParam objAuxiNBFCV2HostCreateLoanRequestParam = new CAuxiNBFCV2HostRequestParam();
+                objAuxiNBFCV2HostCreateLoanRequestParam.key = strEncryptedKey;
+                objAuxiNBFCV2HostCreateLoanRequestParam.iv = strIV;
+                objAuxiNBFCV2HostCreateLoanRequestParam.payload = strEncryptedPayload;
+
+                string jsonRequest = new JavaScriptSerializer().Serialize(objAuxiNBFCV2HostCreateLoanRequestParam);
+                if (jsonRequest == null)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " JavaScript Serializer Object is NULL");
+                    responseCode = "101";
+                    responseDescription = "Unknown Error occured";
+                    outHostTransactionID = null;
+                    return;
+                }
+                outRequestData = jsonRequest;
+                bool bRetVal = false;
+
+                bRetVal = NBFCV2HostHTTPPostData(AuxThreadId, TxnURL, strTimeout, UserID, UserPassword, jsonRequest, true, out responseCode, out responseDescription, out outResponseData);
+                if (!bRetVal)
+                {
+                    logger.Info("\nThreadId :" + AuxThreadId + " NBFCV2HostHTTPPostData() returned False");
+                    return;
+                }
+                logger.Info("\nThreadId :" + AuxThreadId + " Response for CREATE LOAN TXN :" + outResponseData);
+
+                CAuxiNBFCV2HostResponseParam objAuxiNBFCV2HostCreateLoanResponseParam = new CAuxiNBFCV2HostResponseParam();
+                objAuxiNBFCV2HostCreateLoanResponseParam = new JavaScriptSerializer().Deserialize<CAuxiNBFCV2HostResponseParam>(outResponseData);
+                if (null == objAuxiNBFCV2HostCreateLoanResponseParam)
+                {
+                    logger.Info("ThreadId :" + AuxThreadId + " |JavaScriptSerializer object is NULL");
+                    responseCode = "102";
+                    responseDescription = "Unknown Error Occured";
+                    outHostTransactionID = null;
+                    return;
+                }
+                string strEncryptedKeyFromResponse = string.Empty, strEncryptedIVFromResponse = string.Empty, strEncryptedPayloadFromResponse = string.Empty;
+
+                if (!string.IsNullOrWhiteSpace(objAuxiNBFCV2HostCreateLoanResponseParam.key))
+                {
+                    strEncryptedKeyFromResponse = objAuxiNBFCV2HostCreateLoanResponseParam.key;
+
+                }
+                else
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " Invalid Response Received");
+                    responseCode = "101";
+                    responseDescription = "Invalid Response Received";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(objAuxiNBFCV2HostCreateLoanResponseParam.iv))
+                {
+                    strEncryptedIVFromResponse = objAuxiNBFCV2HostCreateLoanResponseParam.iv;
+                }
+                else
+                {
+
+                    logger.Info("\nThreadID: " + AuxThreadId + " Invalid Response Received");
+                    responseCode = "101";
+                    responseDescription = "Invalid Response Received";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+
+                if (!string.IsNullOrWhiteSpace(objAuxiNBFCV2HostCreateLoanResponseParam.payload))
+                {
+                    strEncryptedPayloadFromResponse = objAuxiNBFCV2HostCreateLoanResponseParam.payload;
+
+                }
+                else
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " Invalid Response Received");
+                    responseCode = "101";
+                    responseDescription = "Invalid Response Received";
+                    outHostTransactionID = null;
+                    return;
+
+                }
+
+                string strOutSamplePayloadResponse = string.Empty;
+                getDecryptedResponse(strEncryptedKeyFromResponse, strEncryptedIVFromResponse, strEncryptedPayloadFromResponse, strPinePrivateKey, out strOutSamplePayloadResponse);
+                logger.Info("\nThreadID: " + AuxThreadId + " " + "SamplePayloadResponse of createLoan \n" + strOutSamplePayloadResponse);
+
+                NBFCV2CreateLoanResponseFeilds objNBFCV2CreateLoanResponseFeilds = new NBFCV2CreateLoanResponseFeilds();
+                objNBFCV2CreateLoanResponseFeilds = new JavaScriptSerializer().Deserialize<NBFCV2CreateLoanResponseFeilds>(strOutSamplePayloadResponse);
+                if (null == objNBFCV2CreateLoanResponseFeilds)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " JavaScriptSerializer object is NULL");
+                    responseCode = "101";
+                    responseDescription = "Unknown Error Occured";
+                    outHostTransactionID = null;
+                    return;
+                }
+                bool bSuccess = false;
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.responseCode))
+                {
+                    responseCode = objNBFCV2CreateLoanResponseFeilds.responseCode;
+                }
+                else
+                {
+                    responseCode = "102";
+                    responseDescription = "Response Code received is NULL";
+                    outHostTransactionID = objNBFCV2CreateLoanResponseFeilds.hostTransactionId;
+                    logger.Info("ThreadId :" + AuxThreadId + " Response code received is null");
+                    return;
+                }
+                if (objNBFCV2CreateLoanResponseFeilds.responseDescription != null)
+                {
+                    responseDescription = objNBFCV2CreateLoanResponseFeilds.responseDescription;
+                }
+                if (objNBFCV2CreateLoanResponseFeilds.responseCode.Equals("0") || objNBFCV2CreateLoanResponseFeilds.responseCode.Equals("00"))
+                {
+                    bSuccess = true;
+                }
+
+                bool isInvalidResponse = false;
+                if (bSuccess)
+                {
+
+                    if (!((objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.processingFee) != null && (objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.processingFee).Equals(ProcessingFee)))
+                    {
+                        logger.Info("\nThreadID: " + AuxThreadId + " " + "Invalid ProcessingFee");
+                        isInvalidResponse = true;
+                    }
+                    else
+                    {
+                        strOutProcessingFee = objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.processingFee;
+                    }
+
+                    if (!((objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.advanceEmiAmount) != null && (objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.advanceEmiAmount).Equals(AdvanceEMIAmount)))
+                    {
+                        logger.Info("\nThreadID: " + AuxThreadId + " " + "Invalid AdvanceEMIAmount");
+                        isInvalidResponse = true;
+                    }
+                    else
+                    {
+                        strAdvanceEMIAmount = objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.advanceEmiAmount;
+                    }
+
+                    if (!((objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.downPaymentAmount) != null && (objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.downPaymentAmount).Equals(DownPaymentAmt)))
+                    {
+                        logger.Info("\nThreadID: " + AuxThreadId + " " + "Invalid DownPaymentAmount");
+                        isInvalidResponse = true;
+                    }
+                    else
+                    {
+                        strOutDownPayment = objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.downPaymentAmount;
+                    }
+
+                    if (!((objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.emiAmount) != null && (objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.emiAmount).Equals(EmiAmount)))
+                    {
+                        logger.Info("\nThreadID: " + AuxThreadId + " " + "Invalid EMIAmount");
+                        isInvalidResponse = true;
+                    }
+                    else
+                    {
+                        strOutEMIAmount = objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.emiAmount;
+                    }
+
+                    if (!((objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.loanAmount) != null && (objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.loanAmount).Equals(LoanAmount)))
+                    {
+                        logger.Info("\nThreadID: " + AuxThreadId + " " + "Invalid LoanAmount");
+                        isInvalidResponse = true;
+                    }
+                    else
+                    {
+                        strOutLoanAmount = objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.loanAmount;
+                    }
+
+                    if (!((objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.marginMoney) != null && (objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.marginMoney).Equals(MarginMoney)))
+                    {
+                        logger.Info("\nThreadID: " + AuxThreadId + " " + "Invalid marginMoney");
+                        isInvalidResponse = true;
+                    }
+                    else
+                    {
+                        strOutMarginMoney = objNBFCV2CreateLoanResponseFeilds.calculationDetailsResponse.marginMoney;
+                    }
+                }
+
+                if (isInvalidResponse)
+                {
+                    responseCode = "102";
+                    responseDescription = "Invalid Response Scheme";
+                    outHostTransactionID = objNBFCV2CreateLoanResponseFeilds.hostTransactionId;
+                    logger.Info("ThreadId :" + AuxThreadId + " Invalid Response Scheme Received");
+                    return;
+                }
+
+
+                outHostTransactionID = objNBFCV2CreateLoanResponseFeilds.hostTransactionId;
+                if (bSuccess)
+                {
+                    if (objNBFCV2CreateLoanResponseFeilds.hostTransactionId == null || !HostTransactionID.Equals(outHostTransactionID))
+
+                    {
+                        responseCode = "102";
+                        responseDescription = "Response HostTransactionID received is invalid";
+                        outHostTransactionID = null;
+                        logger.Info("ThreadId :" + AuxThreadId + " Response HostTransactionID  received is invalid");
+                        return;
+                    }
+                }
+
+                //added new 
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.customerName))
+                {
+                    outStrCustomerName = objNBFCV2CreateLoanResponseFeilds.customerName;
+                }
+                else
+                {
+                    outStrCustomerName = String.Empty;
+                }
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.secondaryIdentifier))
+                {
+                    outStrSecondaryTxnIdentifier = objNBFCV2CreateLoanResponseFeilds.secondaryIdentifier;
+                }
+                else
+                {
+                    outStrSecondaryTxnIdentifier = String.Empty;
+                }
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.firstDueDate))
+                {
+                    outStrFirstDueDate = objNBFCV2CreateLoanResponseFeilds.firstDueDate;
+                }
+                else
+                {
+                    outStrFirstDueDate = String.Empty;
+                }
+
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.modeOfRepayment))
+                {
+                    outStrModeOfRepayment = objNBFCV2CreateLoanResponseFeilds.modeOfRepayment;
+                }
+                else
+                {
+                    outStrModeOfRepayment = String.Empty;
+                }
+                //Bank Details response
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.bankDetails.ecsMandate))
+                {
+                    outStrECSMandate = objNBFCV2CreateLoanResponseFeilds.bankDetails.ecsMandate;
+                }
+                else
+                {
+                    objNBFCV2CreateLoanResponseFeilds.bankDetails.ecsMandate = String.Empty;
+                }
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.bankDetails.bankName))
+                {
+                    outStrBankName = objNBFCV2CreateLoanResponseFeilds.bankDetails.bankName;
+                }
+                else
+                {
+                    objNBFCV2CreateLoanResponseFeilds.bankDetails.bankName = String.Empty;
+                }
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.bankDetails.accountNumber))
+                {
+                    outStrAccountNumber = objNBFCV2CreateLoanResponseFeilds.bankDetails.accountNumber;
+                }
+                else
+                {
+                    objNBFCV2CreateLoanResponseFeilds.bankDetails.accountNumber = String.Empty;
+                }
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.bankDetails.micrCode))
+                {
+                    outStrMICRCode = objNBFCV2CreateLoanResponseFeilds.bankDetails.micrCode;
+                }
+                else
+                {
+                    objNBFCV2CreateLoanResponseFeilds.bankDetails.micrCode = String.Empty;
+                }
+
+                //AddressDetails response
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.addressDetails.addressLine1))
+                {
+                    outStrAddressLine1 = objNBFCV2CreateLoanResponseFeilds.addressDetails.addressLine1;
+                }
+                else
+                {
+                    outStrAddressLine1 = objNBFCV2CreateLoanResponseFeilds.addressDetails.addressLine1;
+                }
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.addressDetails.addressLine2))
+                {
+                    outStrAddressLine2 = objNBFCV2CreateLoanResponseFeilds.addressDetails.addressLine2;
+                }
+                else
+                {
+                    outStrAddressLine2 = objNBFCV2CreateLoanResponseFeilds.addressDetails.addressLine2;
+                }
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.addressDetails.addressLine3))
+                {
+                    outStrAddressLine3 = objNBFCV2CreateLoanResponseFeilds.addressDetails.addressLine3;
+                }
+                else
+                {
+                    outStrAddressLine3 = objNBFCV2CreateLoanResponseFeilds.addressDetails.addressLine3;
+                }
+
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.addressDetails.residenceCity))
+                {
+                    outStrResidenceCity = objNBFCV2CreateLoanResponseFeilds.addressDetails.residenceCity;
+                }
+                else
+                {
+                    outStrResidenceCity = String.Empty;
+                }
+
+                //LoanDocs Response
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.loanDocs.idproof))
+                {
+                    outStrIDProof = objNBFCV2CreateLoanResponseFeilds.loanDocs.idproof;
+                }
+                else
+                {
+                    outStrIDProof = String.Empty;
+                }
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.loanDocs.addressProof))
+                {
+                    outStrAddressProof = objNBFCV2CreateLoanResponseFeilds.loanDocs.addressProof;
+                }
+                else
+                {
+                    outStrAddressProof = String.Empty;
+                }
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.loanDocs.loanApplication))
+                {
+                    outStrLoanApplication = objNBFCV2CreateLoanResponseFeilds.loanDocs.loanApplication;
+                }
+                else
+                {
+                    outStrLoanApplication = String.Empty;
+                }
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CreateLoanResponseFeilds.loanDocs.dpn))
+                {
+                    outStrDPN = objNBFCV2CreateLoanResponseFeilds.loanDocs.dpn;
+                }
+                else
+                {
+                    outStrDPN = String.Empty;
+                }
+
+
+            }
+            catch (Exception str)
+            {
+                string strLog = (string)"EXCEPTION: " + str.Data.ToString();
+                responseDescription = strLog;
+                responseCode = "102";
+                outHostTransactionID = null;
+                logger.Info("\nThreadId :" + AuxThreadId + " Exception Response:" + responseDescription);
+                return;
+            }
+        }
+
+        public void ProcessCancellationNBFCV2(string AuxThreadId, string TxnURL, string EntityID, string strTimeout, string UserID, string UserPassword, string mobile, string CardNumber, string CardExpiry, string Mid, string Tid, string TransactionID, string HostTransactionID, string OriginalTransactionID, string TxnAmount, string Otp, string CancellationTypeId, string ReversalTypeID, string txnDateTime, string strAdditionalData, out string responseCode, out string responseDescription, out string outHostTransactionID, out string outRequestData, out string outResponseData, out string outStrAdditionalData)
+        {
+            responseCode = "";
+            responseDescription = "";
+            outRequestData = "";
+            outResponseData = "";
+            outHostTransactionID = "";
+            outStrAdditionalData = "";
+
+            string strMaxConnxCount = "9999";
+            System.Net.ServicePointManager.ServerCertificateValidationCallback = new System.Net.Security.RemoteCertificateValidationCallback(AcceptAllCertifications);
+            System.Net.ServicePointManager.DefaultConnectionLimit = int.Parse(strMaxConnxCount);
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            //up
+
+
+            try
+            {
+                NBFCV2CancellationRequestFeilds obj = new NBFCV2CancellationRequestFeilds();
+                obj.cardExpiry = CardExpiry;
+                obj.cardNumber = CardNumber;
+                obj.mobile = mobile;
+                obj.mid = Mid;
+                obj.tid = Tid;
+                obj.transactionId = TransactionID;
+                //obj.HostTransactionID = HostTransactionID;
+                obj.originalTransactionId = OriginalTransactionID;
+                obj.cancellationType = CancellationTypeId;
+                obj.reversalTypeId = ReversalTypeID;
+                //obj.OriginalSaleHostTransactionID = OriginalSaleHostTransactionID;
+                obj.otp = Otp;
+                //obj.AccessCode = AccessCode;
+                obj.txnAmount = TxnAmount;
+                obj.dateTime = txnDateTime;
+
+
+                string strSamplePayload = new JavaScriptSerializer().Serialize(obj);
+                if (strSamplePayload == null)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " JavaScript Serializer Object is NULL");
+                    responseCode = "101";
+                    responseDescription = "Unknown Error occured";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+                logger.Info("\nThreadID: " + AuxThreadId + " JSON Request Cancellation Generation:" + strSamplePayload);
+
+                string strAUPublicKeyPath = "";
+                strAUPublicKeyPath = System.Configuration.ConfigurationManager.AppSettings["AUKeyFile"];
+                Dictionary<string, string> strAUDictionary = LoadConfig(strAUPublicKeyPath);
+                foreach (KeyValuePair<string, string> author in strAUDictionary)
+                {
+                    if ("AUPrivateKeyPath" == author.Key)
+                    {
+                        Constant.AUPrivateKey = author.Value;
+                        logger.Info(" PrivateKey \n" + Constant.AUPrivateKey);
+                    }
+                    if ("AUPublicKeyPath" == author.Key)
+                    {
+                        Constant.AUPublicKey = author.Value;
+                        logger.Info(" PublicKey \n" + Constant.AUPrivateKey);
+                    }
+                }
+                string strNBFCV2PublicKey = Constant.AUPublicKey;
+                string strPinePrivateKey = Constant.AUPrivateKey;
+                string strIV = string.Empty, strEncryptedPayload = string.Empty, strEncryptedKey = string.Empty;
+                //For encryption
+                getEncryptedPayloadAndKey(strSamplePayload, strNBFCV2PublicKey, out strIV, out strEncryptedPayload, out strEncryptedKey);
+
+                CAuxiNBFCV2HostRequestParam objAuxiNBFCV2HostOTPRequestParam = new CAuxiNBFCV2HostRequestParam();
+                objAuxiNBFCV2HostOTPRequestParam.key = strEncryptedKey;
+                objAuxiNBFCV2HostOTPRequestParam.iv = strIV;
+                objAuxiNBFCV2HostOTPRequestParam.payload = strEncryptedPayload;
+
+                string jsonRequest = new JavaScriptSerializer().Serialize(objAuxiNBFCV2HostOTPRequestParam);
+                if (jsonRequest == null)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " JavaScript Serializer Object is NULL");
+                    responseCode = "101";
+                    responseDescription = "Unknown Error occured";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+                outRequestData = jsonRequest;
+                bool bRetVal = false;
+
+                bRetVal = NBFCV2HostHTTPPostData(AuxThreadId, TxnURL, strTimeout, UserID, UserPassword, jsonRequest, true, out responseCode, out responseDescription, out outResponseData);
+
+                if (!bRetVal)
+                {
+                    logger.Info("\nThreadId :" + AuxThreadId + " NBFCV2HostHTTPPostData() returned false");
+                    return;
+                }
+
+                logger.Info("\nThreadId :" + AuxThreadId + " Response for CANCELLATION TXN :" + outResponseData);
+
+
+
+
+
+                CAuxiNBFCV2HostResponseParam objAuxiNBFCV2HostCancellationResponseParam = new CAuxiNBFCV2HostResponseParam();
+                objAuxiNBFCV2HostCancellationResponseParam = new JavaScriptSerializer().Deserialize<CAuxiNBFCV2HostResponseParam>(outResponseData);
+
+                if (null == objAuxiNBFCV2HostCancellationResponseParam)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " JavaScriptSerializer object is NULL");
+                    responseCode = "101";
+                    responseDescription = "Unknown Error Occured";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+                string strEncryptedKeyFromResponse = string.Empty, strEncryptedIVFromResponse = string.Empty, strEncryptedPayloadFromResponse = string.Empty;
+
+                if (!string.IsNullOrWhiteSpace(objAuxiNBFCV2HostCancellationResponseParam.key))
+                {
+                    strEncryptedKeyFromResponse = objAuxiNBFCV2HostCancellationResponseParam.key;
+
+                }
+                else
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " Invalid Response Received");
+                    responseCode = "101";
+                    responseDescription = "Invalid Response Received";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(objAuxiNBFCV2HostCancellationResponseParam.iv))
+                {
+                    strEncryptedIVFromResponse = objAuxiNBFCV2HostCancellationResponseParam.iv;
+                }
+                else
+                {
+
+                    logger.Info("\nThreadID: " + AuxThreadId + " Invalid Response Received");
+                    responseCode = "101";
+                    responseDescription = "Invalid Response Received";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+
+                if (!string.IsNullOrWhiteSpace(objAuxiNBFCV2HostCancellationResponseParam.payload))
+                {
+                    strEncryptedPayloadFromResponse = objAuxiNBFCV2HostCancellationResponseParam.payload;
+
+                }
+                else
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " Invalid Response Received");
+                    responseCode = "101";
+                    responseDescription = "Invalid Response Received";
+                    outHostTransactionID = null;
+                    return;
+
+                }
+
+                string strOutSamplePayloadResponse = string.Empty;
+                getDecryptedResponse(strEncryptedKeyFromResponse, strEncryptedIVFromResponse, strEncryptedPayloadFromResponse, strPinePrivateKey, out strOutSamplePayloadResponse);
+
+                NBFCV2CancellationResponseFeilds objNBFCV2CancellationResponseFeilds = new NBFCV2CancellationResponseFeilds();
+                objNBFCV2CancellationResponseFeilds = new JavaScriptSerializer().Deserialize<NBFCV2CancellationResponseFeilds>(strOutSamplePayloadResponse);
+
+                logger.Info("\nThreadId :" + AuxThreadId + " Response for CANCELLATION TXN :" + strOutSamplePayloadResponse);
+                if (null == objNBFCV2CancellationResponseFeilds)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " JavaScriptSerializer object is NULL");
+                    responseCode = "101";
+                    responseDescription = "Unknown Error Occured";
+                    outHostTransactionID = null;
+                    return;
+                }
+
+                bool bSuccess = false;
+                if (!string.IsNullOrWhiteSpace(objNBFCV2CancellationResponseFeilds.responseCode))
+                {
+                    responseCode = objNBFCV2CancellationResponseFeilds.responseCode;
+                }
+                else
+                {
+                    responseCode = "102";
+                    responseDescription = "Response Code received is NULL";
+                    outHostTransactionID = objNBFCV2CancellationResponseFeilds.hostTransactionId;
+                    logger.Info("Response code received is null");
+                    return;
+                }
+                if (objNBFCV2CancellationResponseFeilds.responseDescription != null)
+                {
+                    responseDescription = objNBFCV2CancellationResponseFeilds.responseDescription;
+                }
+                if (objNBFCV2CancellationResponseFeilds.responseCode.Equals("0") || objNBFCV2CancellationResponseFeilds.responseCode.Equals("00"))
+                {
+                    bSuccess = true;
+                }
+                outHostTransactionID = objNBFCV2CancellationResponseFeilds.hostTransactionId;
+                if (bSuccess && !"REVERSAL".Equals(CancellationTypeId))
+                {
+                    if (objNBFCV2CancellationResponseFeilds.hostTransactionId == null || !HostTransactionID.Equals(outHostTransactionID))
+
+                    {
+                        responseCode = "102";
+                        responseDescription = "Response HostTransactionID received is invalid";
+                        outHostTransactionID = null;
+                        logger.Info("ThreadId :" + AuxThreadId + " Response HostTransactionID  received is Invalid");
+                        return;
+                    }
+                }
+
+            }
+            catch (Exception str)
+            {
+                string strLog = (string)"EXCEPTION: " + str.Data.ToString();
+                responseDescription = strLog;
+                responseCode = "102";
+                outHostTransactionID = null;
+                logger.Info("\nThreadId :" + AuxThreadId + " Exception Response:" + responseDescription);
+                return;
+            }
+        }
+
+        private bool NBFCV2HostHTTPPostData(string AuxThreadId, string TxnURL, string strTimeout, string strUserName, string strUserPassword, string jsonRequest, bool isOTPRequest, out string responsecode, out string responseDescription, out string outResponseData)
+        {
+            responsecode = "";
+            responseDescription = "";
+            outResponseData = "";
+            try
+            {
+                //int iEntityId = Convert.ToInt32(EntityId);
+
+                HttpWebRequest request = (HttpWebRequest)System.Net.WebRequest.Create(TxnURL);
+
+                request.Accept = "application/json";
+                request.Method = "POST";
+                request.Timeout = int.Parse(strTimeout);
+
+                System.Net.WebHeaderCollection headerSet = new System.Net.WebHeaderCollection();
+                if (null == headerSet)
+                {
+                    logger.Info("\nThreadID: " + AuxThreadId + " " + "|WebHeaderCollection object is NULL");
+                    //logger.Info("|WebHeaderCollection object is NULL");
+                    //outstrResponseCode = "101";
+                    //outstrResponseMessage = "Unknown Error Occured";
+                    return false;
+                }
+
+                ASCIIEncoding encoding = new ASCIIEncoding();
+                //Encoding encoding = new UTF8Encoding();
+                if (null == encoding)
+                {
+
+                    //logger.Info("Encoding Fails");
+                    logger.Info("\nThreadID: " + AuxThreadId + " " + "Encoding Fails");
+                    responsecode = "101";
+                    responseDescription = "Unknown Error Occured";
+                    return false;
+                }
+
+                byte[] byteArray = encoding.GetBytes(jsonRequest);
+                //var data = Encoding.ASCII.GetBytes(jsonRequest);
+
+                HttpRequestCachePolicy noCachePolicy = new HttpRequestCachePolicy(HttpRequestCacheLevel.NoCacheNoStore);
+                if (null == noCachePolicy)
+                {
+                    //logger.Info("HttpRequestCachePolicy object not Created");
+                    logger.Info("\nThreadID: " + AuxThreadId + " " + "HttpRequestCachePolicy object not Created");
+                    responsecode = "101";
+                    responseDescription = "Unknown Error Occured";
+                    return false;
+                }
+                request.CachePolicy = noCachePolicy;
+                request.ContentType = "application/json";
+                request.ContentLength = byteArray.Length;
+                string strUserIdPass = strUserName + " " + strUserPassword;
+                //byte[] byt = System.Text.Encoding.UTF8.GetBytes(strUserIdPass);
+                //string strEncodedCred = Convert.ToBase64String(byt);
+                //request.Headers.Add("Authorization", "Basic " + strEncodedCred);
+                request.Headers.Add("Authorization", strUserIdPass);
+                Stream dataStream = request.GetRequestStream();
+
+                // Write the data to the request stream.
+                dataStream.Write(byteArray, 0, byteArray.Length);
+                //dataStream.Write(data, 0, data.Length);
+                // Close the Stream object.
+                dataStream.Close();
+
+
+                // Send and get the response
+                HttpWebResponse response = (HttpWebResponse)request.GetResponse();
+
+                dataStream = response.GetResponseStream();
+                StreamReader reader = new StreamReader(dataStream);
+                if (null == reader)
+                {
+                    logger.Info("NBFCV2HostHTTPOST() : StreamReader Fails");
+                    responsecode = isOTPRequest ? "101" : "102";
+                    responseDescription = "Unknown Error Occured";
+                    return false;
+                }
+                // Read the content.
+                outResponseData = reader.ReadToEnd();
+
+                reader.Close();
+                dataStream.Close();
+                response.Close();
+                return true;
+
+            }
+            catch (Exception str)
+            {
+                string strLog1;
+
+                if (null == str)
+                {
+                    logger.Info("\n Exception : Invalid Response ");
+                    strLog1 = "Invalid Response";
+                    responsecode = isOTPRequest ? "101" : "102";
+                }
+                else
+                {
+                    //RespMessage = e.Message;
+                    if (null != str.InnerException)
+                    {
+                        if (null != str.InnerException.Message)
+                        {
+                            strLog1 = str.InnerException.Message;
+                            logger.Info("\n Exception :" + str.InnerException.Message);
+                        }
+                        else
+                        {
+                            logger.Info("\nException : Invalid Response");
+                            strLog1 = "Invalid Response";
+                        }
+                    }
+                    else
+                    {
+                        if (null != str.Message)
+                        {
+                            logger.Info("\n Exception :" + str.Message);
+                            strLog1 = str.Message;
+                        }
+                        else
+                        {
+                            strLog1 = "Invalid Response";
+                        }
+                    }
+                }
+                responseDescription = strLog1;
+                responsecode = isOTPRequest ? "101" : "102";
+
+                return false;
+            }
+        }
+        private static bool AcceptAllCertifications(object sender, System.Security.Cryptography.X509Certificates.X509Certificate certification, System.Security.Cryptography.X509Certificates.X509Chain chain, System.Net.Security.SslPolicyErrors sslPolicyErrors)
+        {
+            return true;
+        }
+
+        public Dictionary<string, string> LoadConfig(string settingfile)
+        {
+            var dic = new Dictionary<string, string>();
+
+            if (File.Exists(settingfile))
+            {
+                var settingdata = File.ReadAllLines(settingfile);
+                for (var i = 0; i < settingdata.Length; i++)
+                {
+                    var setting = settingdata[i];
+                    var sidx = setting.IndexOf("=");
+                    if (sidx >= 0)
+                    {
+                        var skey = setting.Substring(0, sidx);
+                        var svalue = setting.Substring(sidx + 1);
+                        if (!dic.ContainsKey(skey))
+                        {
+                            dic.Add(skey, svalue);
+                        }
+                    }
+                }
+            }
+
+            return dic;
+        }
+
+    }
+}
+
